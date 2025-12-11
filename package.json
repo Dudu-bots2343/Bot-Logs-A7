@@ -1,17 +1,21 @@
 {
-  "name": "discord-logs-bot",
+  "name": "bot-logs-a7",
   "version": "1.0.0",
-  "description": "Bot de logs com sincronização de cargos, 24h em call e integração com servidor principal.",
+  "description": "Bot de logs + vinculo de cargos + 24h em call",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "engines": {
-    "node": ">=18.x"
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.3"
+    "discord.js": "^14.15.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
   }
 }
