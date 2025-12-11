@@ -1,18 +1,17 @@
 {
   "name": "discord-logs-bot",
   "version": "1.0.0",
-  "description": "Bot de logs A7",
+  "private": true,
   "main": "index.js",
-  "engines": {
-    "node": "20.x"
-  },
+  "license": "MIT",
   "scripts": {
     "start": "node index.js"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "@discordjs/voice": "^0.16.1",
-    "dotenv": "^16.3.1",
-    "express": "^4.19.2"
+    "discord.js": "^14.15.2",
+    "dotenv": "^16.4.5"
   }
 }
