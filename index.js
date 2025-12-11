@@ -277,30 +277,46 @@ client.on("channelDelete", (c) => {
    FICAR 24H NA CALL
 ======================================================= */
 
-async function connectVoice() {
-  try {
-    const channel = await client.channels.fetch(CANAL_VOZ);
+const { Client, GatewayIntentBits, Partials } = require("discord.js");
+require("dotenv").config();
 
-    const conn = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
-      selfDeaf: true,
-      selfMute: false
-    });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates,
+  ],
+  partials: [Partials.Message, Partials.Channel, Partials.User],
+});
 
-    entersState(conn, VoiceConnectionStatus.Ready, 20_000);
+client.once("ready", () => {
+  console.log(`Bot logado como ${client.user.tag}`);
+  
+  // Conectar ao canal de voz sem usar @discordjs/voice
+  const guild = client.guilds.cache.get(process.env.GUILD_ID);
+  if (!guild) return console.log("Guild não encontrada.");
 
-    conn.on(VoiceConnectionStatus.Disconnected, () => {
-      setTimeout(connectVoice, 5000);
-    });
+  const channel = guild.channels.cache.get(process.env.VOICE_CHANNEL_ID);
+  if (!channel) return console.log("Canal de voz não encontrado.");
 
-  } catch (e) {
-    setTimeout(connectVoice, 5000);
-  }
-}
+  // Conexão DUMMY (não usa WebRTC)
+  channel.join
+    ? channel.join() // fallback para versões antigas
+    : guild.members.me.voice.setChannel(channel)
+        .then(() => console.log("Conectado no canal de voz sem erro."))
+        .catch(console.error);
+});
 
-/* =======================================================
+// === Seus logs aqui ===
+// Exemplo:
+client.on("messageCreate", (message) => {
+  console.log(`[LOG] ${message.author.tag}: ${message.content}`);
+});
+
+
+/* ======================================================
    EXPRESS PARA RENDER / UPTIME ROBOT
 ======================================================= */
 
@@ -322,4 +338,4 @@ client.on("ready", () => {
    LOGIN
 ======================================================= */
 
-client.login(TOKEN);
+client.login(process.env.TOKEN);
