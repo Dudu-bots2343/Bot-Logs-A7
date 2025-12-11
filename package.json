@@ -1,31 +1,15 @@
 {
-  "name": "sistema-a7-logs",
+  "name": "a7-logs",
   "version": "1.0.0",
-  "description": "Bot de logs, vinculação e call 24h para a organização A7.",
+  "description": "Sistema completo A7 Logs — compatível com Render + GitHub",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.3",
+    "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
-    "express": "^4.21.2"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
-  },
-  "engines": {
-    "node": ">=18.x"
-  },
-  "keywords": [
-    "discord",
-    "discord-bot",
-    "logs",
-    "discordjs",
-    "render"
-  ],
-  "author": "Sistema A7",
-  "license": "MIT"
+    "express": "^4.19.2"
+  }
 }
