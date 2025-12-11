@@ -1,17 +1,17 @@
 {
-  "name": "discord-logs-bot",
+  "name": "bot-a7",
   "version": "1.0.0",
-  "private": true,
+  "description": "Bot A7 com logs, vinculação e call 24h",
   "main": "index.js",
-  "license": "MIT",
   "scripts": {
     "start": "node index.js"
   },
-  "engines": {
-    "node": "20.x"
-  },
   "dependencies": {
-    "discord.js": "^14.15.2",
-    "dotenv": "^16.4.5"
+    "discord.js": "14.15.3",
+    "dotenv": "16.3.1",
+    "express": "4.18.2"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
