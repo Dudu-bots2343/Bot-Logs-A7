@@ -1,4 +1,5 @@
-// index.js
+// index.js - A7 Logs (único arquivo)
+// Dependências: discord.js v14, dotenv, express, @discordjs/voice
 require("dotenv").config();
 const {
   Client,
@@ -14,47 +15,38 @@ const {
 const express = require("express");
 const { joinVoiceChannel } = require("@discordjs/voice");
 
-// === ENV ===
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+// ---------- CONFIG / ENV ----------
+const TOKEN = process.env.DISCORD_TOKEN;
 
-const SERVIDOR_PRINCIPAL = process.env.SERVIDOR_PRINCIPAL_ID;
-const SERVIDOR_LOGS = process.env.SERVIDOR_LOGS_ID;
+const GUILD_MAIN_ID = process.env.SERVIDOR_PRINCIPAL_ID;
+const GUILD_LOGS_ID = process.env.SERVIDOR_LOGS_ID;
 
-const CANAL_BOTAO_VINCULO = process.env.CANAL_BOTAO_VINCULO;
-const CANAL_VOZ_24H = process.env.CANAL_VOZ_24H;
+const CHANNEL_BUTTON_ID = process.env.CANAL_BOTAO_VINCULO;
+const VOICE_CHANNEL_24H_ID = process.env.CANAL_VOZ_24H;
+const PORT = process.env.PORT || 3000;
 
-const CH_LOGS = {
+// Channels for logs (use your env vars)
+const CH = {
   MENSAGEM_ENVIADA: process.env.LOG_MENSAGEM_ENVIADA,
   MENSAGEM_APAGADA: process.env.LOG_MENSAGEM_APAGADA,
   MENSAGEM_EDITADA: process.env.LOG_MENSAGEM_EDITADA,
-  MENSAGEM_OUTRO_APAGADA: process.env.LOG_MENSAGEM_APAGADA /* pode ter canal separado se quiser */,
-  APROVACAO_REJEICAO: process.env.LOG_ADICIONOU_CARGO /* reuse or new var */,
-  NOME_ATUALIZADO: process.env.LOG_MENSAGEM_EDITADA /* reuse */,
-  CRIAR_CARGO: process.env.LOG_CRIAR_CARGO,
-  EDITAR_CARGO: process.env.LOG_CRIAR_CARGO /* reuse */,
   ADICIONOU_CARGO: process.env.LOG_ADICIONOU_CARGO,
   REMOVEU_CARGO: process.env.LOG_REMOVEU_CARGO,
+  CRIAR_CARGO: process.env.LOG_CRIAR_CARGO,
   DELETOU_CARGO: process.env.LOG_DELETOU_CARGO,
-  ENTROU_CALL: process.env.LOG_ENTROU_CALL,
-  SAIU_CALL: process.env.LOG_SAIU_CALL,
-  DESCONCT_CALL: process.env.LOG_SAIU_CALL,
-  MOVEU_CALL: process.env.LOG_MOVEU_USUARIO_CALL,
-  CRIOU_CANAL: process.env.LOG_CRIAR_CANAL,
+  CRIAR_CANAL: process.env.LOG_CRIAR_CANAL,
   DELETOU_CANAL: process.env.LOG_DELETOU_CANAL,
   MOVEU_CANAL: process.env.LOG_MOVEU_CANAL,
+  ENTROU_CALL: process.env.LOG_ENTROU_CALL,
+  SAIU_CALL: process.env.LOG_SAIU_CALL,
+  MOVEU_CALL: process.env.LOG_MOVEU_USUARIO_CALL,
+  MUTOU: process.env.LOG_MUTOU_DESMUTOU,
   ENTROU_SERVIDOR: process.env.LOG_MENSAGEM_ENVIADA,
   SAIU_SERVIDOR: process.env.LOG_MENSAGEM_EDITADA,
-  SPAM_SUSPEITO: process.env.LOG_MENSAGEM_APAGADA,
-  BOT_FALHA: process.env.LOG_MENSAGEM_APAGADA,
-  BAN: process.env.LOG_DELETOU_CARGO,
-  EXPULSAO: process.env.LOG_DELETOU_CARGO,
-  CASTIGO: process.env.LOG_DELETOU_CARGO,
-  SILENCIO: process.env.LOG_MUTOU_DESMUTOU,
-  MUTE: process.env.LOG_MUTOU_DESMUTOU
+  BOT_FALHA: process.env.LOG_MENSAGEM_APAGADA
 };
 
-// === ROLE MAP (MAIN ID => LOGS ID) ===
-// Você já colocou essas variáveis no .env; usamos a convenção *_LOGS para o servidor de logs
+// ROLE MAP (principal ID -> logs ID). Add as many as you want in .env using the *_LOGS pattern.
 const ROLE_MAP = {
   [process.env.FOUNDER]: process.env.FOUNDER_LOGS,
   [process.env.DIRETOR_GERAL]: process.env.DIRETOR_GERAL_LOGS,
@@ -62,10 +54,10 @@ const ROLE_MAP = {
   [process.env.ALTA_CUPULA_A7]: process.env.ALTA_CUPULA_A7_LOGS,
   [process.env.LEGADO_A7]: process.env.LEGADO_A7_LOGS
 };
+// For watching additions/removals in main:
+const WATCHED_ROLE_IDS = Object.keys(ROLE_MAP);
 
-const WATCHED_ROLE_IDS = Object.keys(ROLE_MAP); // IDs no servidor principal que estamos observando
-
-// === CLIENT ===
+// ---------- CLIENT ----------
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -78,162 +70,194 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember]
 });
 
-// === HELPERS ===
+// ---------- HELPERS ----------
 function getChannel(id) {
   if (!id) return null;
   return client.channels.cache.get(id) || null;
 }
 
-function sendEmbedTo(channelId, embed) {
+function sendEmbed(channelId, embed) {
   try {
     const ch = getChannel(channelId);
     if (!ch) return;
     ch.send({ embeds: [embed] }).catch(() => {});
   } catch (e) {
-    console.error("Erro ao enviar embed:", e);
+    console.error("sendEmbed error:", e);
   }
 }
 
-function makeLogEmbed(title, description, author) {
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(description || "\u200b")
-    .setColor(0x2b2d31)
-    .setTimestamp();
-  if (author) embed.setAuthor(author);
-  return embed;
+function formatDateBrazil(d = new Date()) {
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(d);
+  } catch {
+    return d.toLocaleString();
+  }
 }
 
-// Try to fetch who deleted a message (audit log). May be unreliable for old events.
-async function fetchAuditExecutor(guild, type, filterFn) {
+function makeEmbed(title, fields = [], color = 0x2b2d31) {
+  const e = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(color)
+    .setTimestamp(new Date());
+  if (fields && fields.length) e.addFields(...fields);
+  return e;
+}
+
+// Fetch audit log executor with optional filter
+async function fetchExecutor(guild, type, filterFn = null) {
   try {
-    const logs = await guild.fetchAuditLogs({ type, limit: 5 });
-    const entry = logs.entries.find((e) => (filterFn ? filterFn(e) : true));
+    if (!guild || !type) return null;
+    const logs = await guild.fetchAuditLogs({ type, limit: 10 }).catch(() => null);
+    if (!logs) return null;
+    const entry = logs.entries.find(e => (filterFn ? filterFn(e) : true));
     return entry ? entry.executor : null;
   } catch {
     return null;
   }
 }
 
-// === SYNC ROLES WHEN MEMBER JOINS LOGS SERVER ===
+// ---------- SYNC: when user joins LOGS server give mapped roles from MAIN ----------
 client.on("guildMemberAdd", async (member) => {
   try {
-    // Only handle when joined into the logs server
-    if (member.guild.id !== SERVIDOR_LOGS) return;
+    if (member.guild.id !== GUILD_LOGS_ID) return;
 
-    // Find member in main server
-    const mainGuild = await client.guilds.fetch(SERVIDOR_PRINCIPAL).catch(() => null);
+    const mainGuild = await client.guilds.fetch(GUILD_MAIN_ID).catch(() => null);
     if (!mainGuild) {
-      // can't find main
-      sendEmbedTo(CH_LOGS.BOT_FALHA, makeLogEmbed("Erro: Main guild não encontrado", `ID: ${SERVIDOR_PRINCIPAL}`));
+      sendEmbed(CH.BOT_FALHA, makeEmbed("Erro: guild principal não encontrado", [{ name: "Info", value: `${GUILD_MAIN_ID}` }]));
       return;
     }
 
+    // find same user in main
     const mainMember = await mainGuild.members.fetch(member.id).catch(() => null);
     if (!mainMember) {
-      // Not on main — kick from logs as requested
+      // kick if not in main
       await member.kick("Usuário não encontrado no servidor principal.").catch(() => {});
-      sendEmbedTo(CH_LOGS.SAIU_SERVIDOR, makeLogEmbed("Expulso do servidor de logs", `<@${member.id}> expulso porque não está no servidor principal.`));
+      sendEmbed(CH.SAIU_SERVIDOR, makeEmbed("Expulso do logs", [
+        { name: "Usuário", value: `<@${member.id}>` },
+        { name: "Motivo", value: "Não está no servidor principal" },
+        { name: "Data/Hora", value: formatDateBrazil() }
+      ]));
       return;
     }
 
-    // Collect roles in main that are watched
-    const rolesToGiveMain = mainMember.roles.cache.filter(r => WATCHED_ROLE_IDS.includes(r.id));
-    if (!rolesToGiveMain || rolesToGiveMain.size === 0) {
-      // If no A7 roles on main, remove from logs (per your rule)
-      await member.kick("Sem cargos A7 no servidor principal.");
-      sendEmbedTo(CH_LOGS.SAIU_SERVIDOR, makeLogEmbed("Expulso do logs", `<@${member.id}> expulso porque não tem cargos A7 no servidor principal.`));
+    // collect watched roles the user has on main (but user asked: all roles of main -> we'll map only the ones present in ROLE_MAP)
+    const rolesMain = mainMember.roles.cache.filter(r => WATCHED_ROLE_IDS.includes(r.id));
+    if (!rolesMain || rolesMain.size === 0) {
+      // If no mapped roles, kick
+      await member.kick("Sem cargos mapeados no servidor principal.").catch(() => {});
+      sendEmbed(CH.SAIU_SERVIDOR, makeEmbed("Expulso do logs", [
+        { name: "Usuário", value: `<@${member.id}>` },
+        { name: "Motivo", value: "Não possui cargos mapeados no servidor principal" },
+        { name: "Data/Hora", value: formatDateBrazil() }
+      ]));
       return;
     }
 
-    // Map and add roles in logs
-    const rolesToAddInLogs = [];
-    rolesToGiveMain.forEach(r => {
-      const mapped = ROLE_MAP[r.id];
-      if (mapped) rolesToAddInLogs.push(mapped);
-    });
-
-    // Apply roles in logs guild (ensure roles exist)
+    // add mapped roles in logs guild
     const logsGuild = member.guild;
-    for (const roleId of rolesToAddInLogs) {
-      const roleObj = logsGuild.roles.cache.get(roleId);
-      if (roleObj) {
-        await member.roles.add(roleObj).catch(() => {});
+    const addedRoles = [];
+    for (const [, r] of rolesMain) {
+      const mapped = ROLE_MAP[r.id];
+      if (!mapped) continue;
+      const roleInLogs = logsGuild.roles.cache.get(mapped);
+      if (roleInLogs) {
+        await member.roles.add(roleInLogs).catch(() => {});
+        addedRoles.push(roleInLogs.name);
       }
     }
 
-    sendEmbedTo(CH_LOGS.ENTROU_SERVIDOR,
-      makeLogEmbed("Usuário entrou e recebeu cargos A7", `<@${member.id}> recebeu cargos no servidor de logs automaticamente.`)
-    );
+    sendEmbed(CH.ENTROU_SERVIDOR, makeEmbed("Entrou no servidor de logs", [
+      { name: "Usuário", value: `<@${member.id}>` },
+      { name: "Cargos adicionados", value: addedRoles.length ? addedRoles.join(", ") : "Nenhum" },
+      { name: "Data/Hora", value: formatDateBrazil() }
+    ]));
   } catch (err) {
-    console.error("Erro guildMemberAdd:", err);
+    console.error("guildMemberAdd error:", err);
   }
 });
 
-// === WHEN SOMEONE LEAVES THE MAIN SERVER, KICK FROM LOGS ===
+// ---------- WHEN USER LEAVES MAIN -> KICK FROM LOGS ----------
 client.on("guildMemberRemove", async (member) => {
   try {
-    // If someone leaves the main server
-    if (member.guild.id !== SERVIDOR_PRINCIPAL) return;
-
-    const logsGuild = await client.guilds.fetch(SERVIDOR_LOGS).catch(() => null);
+    if (member.guild.id !== GUILD_MAIN_ID) return;
+    const logsGuild = await client.guilds.fetch(GUILD_LOGS_ID).catch(() => null);
     if (!logsGuild) return;
     const logsMember = await logsGuild.members.fetch(member.id).catch(() => null);
     if (logsMember) {
       await logsMember.kick("Saiu do servidor principal.").catch(() => {});
-      sendEmbedTo(CH_LOGS.SAIU_SERVIDOR, makeLogEmbed("Expulso do logs", `Usuário <@${member.id}> saiu do servidor principal e foi removido do logs.`));
+      sendEmbed(CH.SAIU_SERVIDOR, makeEmbed("Removido do logs", [
+        { name: "Usuário", value: `<@${member.id}>` },
+        { name: "Motivo", value: "Saiu do servidor principal" },
+        { name: "Data/Hora", value: formatDateBrazil() }
+      ]));
     }
   } catch (err) {
-    console.error("Erro guildMemberRemove:", err);
+    console.error("guildMemberRemove error:", err);
   }
 });
 
-// === SYNC ROLE CHANGES MAIN -> LOGS WHEN ROLES CHANGED ON MAIN ===
+// ---------- SYNC ROLE CHANGES MAIN -> LOGS (add/remove watched roles) ----------
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
   try {
-    // Only care about updates in the main server
-    if (newMember.guild.id !== SERVIDOR_PRINCIPAL) return;
+    // only for main server
+    if (newMember.guild.id !== GUILD_MAIN_ID) return;
 
-    // Compute added/removed watched roles
     const added = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id) && WATCHED_ROLE_IDS.includes(r.id));
     const removed = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id) && WATCHED_ROLE_IDS.includes(r.id));
 
     if (added.size === 0 && removed.size === 0) return;
 
-    const logsGuild = await client.guilds.fetch(SERVIDOR_LOGS).catch(() => null);
+    const logsGuild = await client.guilds.fetch(GUILD_LOGS_ID).catch(() => null);
     if (!logsGuild) return;
     const logsMember = await logsGuild.members.fetch(newMember.id).catch(() => null);
+    if (!logsMember) return; // user not in logs -> nothing to sync
 
-    // If user is not in logs server, nothing to sync
-    if (!logsMember) return;
-
-    // For each added role on main, add mapped role on logs
-    for (const [, role] of added) {
-      const mapped = ROLE_MAP[role.id];
+    // For added roles -> add mapped role in logs + try to fetch who did it
+    for (const [, r] of added) {
+      const mapped = ROLE_MAP[r.id];
       if (!mapped) continue;
       const roleInLogs = logsGuild.roles.cache.get(mapped);
       if (roleInLogs) {
         await logsMember.roles.add(roleInLogs).catch(() => {});
-        sendEmbedTo(CH_LOGS.ADICIONOU_CARGO, makeLogEmbed("Cargo adicionado (sync)", `<@${newMember.id}> recebeu **${roleInLogs.name}** no servidor de logs (por adição no principal).`));
+        // fetch executor
+        const executor = await fetchExecutor(newMember.guild, AuditLogEvent.MemberRoleUpdate, (e) => e.targetId === newMember.id);
+        sendEmbed(CH.ADICIONOU_CARGO, makeEmbed("Cargo adicionado (sync)", [
+          { name: "Cargo", value: `${roleInLogs.name}`, inline: true },
+          { name: "Executado por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido", inline: true },
+          { name: "Usuário", value: `<@${newMember.id}>`, inline: true },
+          { name: "Data/Hora", value: formatDateBrazil() }
+        ]));
       }
     }
 
-    // For each removed role on main, remove mapped role on logs
-    for (const [, role] of removed) {
-      const mapped = ROLE_MAP[role.id];
+    // For removed roles -> remove mapped role in logs
+    for (const [, r] of removed) {
+      const mapped = ROLE_MAP[r.id];
       if (!mapped) continue;
       const roleInLogs = logsGuild.roles.cache.get(mapped);
       if (roleInLogs) {
         await logsMember.roles.remove(roleInLogs).catch(() => {});
-        sendEmbedTo(CH_LOGS.REMOVEU_CARGO, makeLogEmbed("Cargo removido (sync)", `<@${newMember.id}> perdeu **${roleInLogs.name}** no servidor de logs (por remoção no principal).`));
+        const executor = await fetchExecutor(newMember.guild, AuditLogEvent.MemberRoleUpdate, (e) => e.targetId === newMember.id);
+        sendEmbed(CH.REMOVEU_CARGO, makeEmbed("Cargo removido (sync)", [
+          { name: "Cargo", value: `${roleInLogs.name}`, inline: true },
+          { name: "Executado por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido", inline: true },
+          { name: "Usuário", value: `<@${newMember.id}>`, inline: true },
+          { name: "Data/Hora", value: formatDateBrazil() }
+        ]));
       }
     }
   } catch (err) {
-    console.error("Erro guildMemberUpdate sync:", err);
+    console.error("guildMemberUpdate sync error:", err);
   }
 });
 
-// === INTERACTION (BUTTON) TO MANUALLY SYNC ===
+// ---------- MANUAL SYNC BUTTON ----------
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (!interaction.isButton()) return;
@@ -241,244 +265,298 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const logsGuild = await client.guilds.fetch(SERVIDOR_LOGS).catch(() => null);
+    const logsGuild = await client.guilds.fetch(GUILD_LOGS_ID).catch(() => null);
     const logsMember = logsGuild ? await logsGuild.members.fetch(interaction.user.id).catch(() => null) : null;
     if (!logsMember) {
       await interaction.editReply("❌ Você não está no servidor de logs.");
       return;
     }
 
-    // Fetch main member
-    const mainGuild = await client.guilds.fetch(SERVIDOR_PRINCIPAL).catch(() => null);
+    const mainGuild = await client.guilds.fetch(GUILD_MAIN_ID).catch(() => null);
     const mainMember = mainGuild ? await mainGuild.members.fetch(interaction.user.id).catch(() => null) : null;
     if (!mainMember) {
       await interaction.editReply("❌ Você não está no servidor principal.");
-      // optional: kick from logs?
       return;
     }
 
-    // Get roles to sync
+    // find roles in main that are in ROLE_MAP
     const rolesMain = mainMember.roles.cache.filter(r => WATCHED_ROLE_IDS.includes(r.id));
     if (!rolesMain || rolesMain.size === 0) {
-      // Kick if no A7 roles (as you requested)
-      await logsMember.kick("Sem cargos A7 no servidor principal.").catch(() => {});
-      await interaction.editReply("❌ Você não possui cargos A7 no servidor principal. Você foi removido do servidor de logs.");
+      // Kick from logs if requested
+      await logsMember.kick("Sem cargos mapeados no servidor principal.").catch(() => {});
+      await interaction.editReply("❌ Você não possui cargos mapeados no servidor principal. Você foi removido do servidor de logs.");
       return;
     }
 
-    const rolesAdded = [];
+    const synced = [];
     for (const [, r] of rolesMain) {
       const mapped = ROLE_MAP[r.id];
       if (!mapped) continue;
       const roleObj = logsMember.guild.roles.cache.get(mapped);
       if (roleObj) {
         await logsMember.roles.add(roleObj).catch(() => {});
-        rolesAdded.push(roleObj.name);
+        synced.push(roleObj.name);
       }
     }
 
-    await interaction.editReply(rolesAdded.length > 0 ? `✅ Cargos sincronizados: ${rolesAdded.join(", ")}` : "❌ Nenhum cargo sincronizado.");
+    await interaction.editReply(synced.length ? `✅ Cargos sincronizados: ${synced.join(", ")}` : "❌ Nenhum cargo sincronizado.");
   } catch (err) {
-    console.error("Erro no botão vincular:", err);
+    console.error("button sync error:", err);
   }
 });
 
-// === POST BUTTON ON READY (if channel available) ===
+// Post the button (on ready)
 async function postButtonIfNeeded() {
   try {
-    const ch = getChannel(CANAL_BOTAO_VINCULO);
+    const ch = getChannel(CHANNEL_BUTTON_ID);
     if (!ch || !ch.isTextBased?.()) return;
-    // Check if last few messages contain our button — to avoid spam we won't check, just post
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("vincular_cargos")
-        .setLabel("🔗 Vincular cargos")
-        .setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId("vincular_cargos").setLabel("🔗 Vincular cargos").setStyle(ButtonStyle.Primary)
     );
     await ch.send({
-      embeds: [ makeLogEmbed("Vincular cargos", "Clique no botão abaixo para sincronizar seus cargos com o servidor principal.") ],
+      embeds: [ makeEmbed("Vincular cargos", [{ name: "Instruções", value: "Clique para sincronizar seus cargos com o servidor principal." }]) ],
       components: [row]
     }).catch(() => {});
-  } catch (e) { console.error("postButtonIfNeeded:", e); }
+  } catch (e) {
+    console.error("postButton error:", e);
+  }
 }
 
-// === MESSAGE LOGS ===
+// ---------- MESSAGE LOGS (create / update / delete) ----------
 client.on("messageCreate", (msg) => {
   if (msg.author?.bot) return;
-  const embed = new EmbedBuilder()
-    .setTitle("Mensagem enviada")
-    .addFields(
-      { name: "Autor", value: `${msg.author.tag} (${msg.author.id})`, inline: true },
-      { name: "Canal", value: `${msg.channel?.name || msg.channelId}`, inline: true }
-    )
-    .setDescription(msg.content?.slice(0, 2048) || "[embed/imagem]")
-    .setTimestamp();
-  sendEmbedTo(CH_LOGS.MENSAGEM_ENVIADA, embed);
+  const embed = makeEmbed("Mensagem enviada", [
+    { name: "Autor", value: `${msg.author.tag} (${msg.author.id})`, inline: true },
+    { name: "Canal", value: `${msg.channel?.name || msg.channelId}`, inline: true },
+    { name: "Conteúdo", value: msg.content?.slice(0,1024) || "[embed/imagem]" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]);
+  sendEmbed(CH.MENSAGEM_ENVIADA, embed);
 });
 
 client.on("messageUpdate", (oldMsg, newMsg) => {
   if (newMsg.author?.bot) return;
-  const embed = new EmbedBuilder()
-    .setTitle("Mensagem editada")
-    .addFields(
-      { name: "Autor", value: `${newMsg.author.tag} (${newMsg.author.id})`, inline: true },
-      { name: "Canal", value: `${newMsg.channel?.name || newMsg.channelId}`, inline: true }
-    )
-    .addFields(
-      { name: "Antes", value: oldMsg.content?.slice(0,1024) || "[indisponível]" },
-      { name: "Depois", value: newMsg.content?.slice(0,1024) || "[indisponível]" }
-    )
-    .setTimestamp();
-  sendEmbedTo(CH_LOGS.MENSAGEM_EDITADA, embed);
+  const embed = makeEmbed("Mensagem editada", [
+    { name: "Autor", value: `${newMsg.author.tag} (${newMsg.author.id})`, inline: true },
+    { name: "Canal", value: `${newMsg.channel?.name || newMsg.channelId}`, inline: true },
+    { name: "Antes", value: oldMsg.content?.slice(0,1024) || "[indisponível]" },
+    { name: "Depois", value: newMsg.content?.slice(0,1024) || "[indisponível]" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]);
+  sendEmbed(CH.MENSAGEM_EDITADA, embed);
 });
 
 client.on("messageDelete", async (msg) => {
-  // Attempt to find who deleted via audit logs (may not be always reliable)
-  let deleter = null;
   try {
+    let deleter = null;
     if (msg.guild) {
-      const exec = await fetchAuditExecutor(msg.guild, AuditLogEvent.MessageDelete, (e) => {
-        // we can't easily match message id here reliably, so just return the most recent
-        return true;
-      });
-      deleter = exec ? `${exec.tag} (${exec.id})` : null;
+      const exec = await fetchExecutor(msg.guild, AuditLogEvent.MessageDelete);
+      if (exec) deleter = `${exec.tag} (${exec.id})`;
     }
-  } catch {}
-
-  const embed = new EmbedBuilder()
-    .setTitle("Mensagem apagada")
-    .addFields(
+    const embed = makeEmbed("Mensagem apagada", [
       { name: "Autor da mensagem", value: `${msg.author?.tag || "Desconhecido"} (${msg.author?.id || "N/A"})`, inline: true },
       { name: "Apagado por", value: deleter || "Desconhecido", inline: true },
-      { name: "Canal", value: `${msg.channel?.name || msg.channelId}`, inline: true }
-    )
-    .setDescription(msg.content?.slice(0,2048) || "[embed/imagem]")
-    .setTimestamp();
-  sendEmbedTo(CH_LOGS.MENSAGEM_APAGADA, embed);
+      { name: "Canal", value: `${msg.channel?.name || msg.channelId}`, inline: true },
+      { name: "Conteúdo", value: msg.content?.slice(0,1024) || "[embed/imagem]" },
+      { name: "Data/Hora", value: formatDateBrazil() }
+    ]);
+    sendEmbed(CH.MENSAGEM_APAGADA, embed);
+  } catch (err) {
+    console.error("messageDelete error:", err);
+  }
 });
 
-// === VOICE STATE LOGS ===
+// ---------- VOICE LOGS ----------
 client.on("voiceStateUpdate", async (oldState, newState) => {
   try {
     const user = newState.member?.user || oldState.member?.user;
     if (!user) return;
 
-    // Entered
+    // Enter
     if (!oldState.channelId && newState.channelId) {
-      sendEmbedTo(CH_LOGS.ENTROU_CALL, makeLogEmbed("Entrou na call", `Usuário: ${user.tag} (${user.id})\nCanal: ${newState.channel?.name || newState.channelId}`));
+      sendEmbed(CH.ENTROU_CALL, makeEmbed("Entrou na call", [
+        { name: "Usuário", value: `${user.tag} (${user.id})`, inline: true },
+        { name: "Canal", value: `${newState.channel?.name || newState.channelId}`, inline: true },
+        { name: "Data/Hora", value: formatDateBrazil() }
+      ]));
     }
 
     // Left
     if (oldState.channelId && !newState.channelId) {
-      sendEmbedTo(CH_LOGS.SAIU_CALL, makeLogEmbed("Saiu da call", `Usuário: ${user.tag} (${user.id})\nCanal: ${oldState.channel?.name || oldState.channelId}`));
+      // try to find executor (someone who disconnected them) -- audit logs may not list disconnects reliably
+      const executor = newState.guild ? await fetchExecutor(newState.guild, AuditLogEvent.MemberMove) : null;
+      sendEmbed(CH.SAIU_CALL, makeEmbed("Saiu da call", [
+        { name: "Usuário", value: `${user.tag} (${user.id})`, inline: true },
+        { name: "Canal", value: `${oldState.channel?.name || oldState.channelId}`, inline: true },
+        { name: "Desconectado por", value: executor ? `${executor.tag} (${executor.id})` : "Usuário/Desconhecido", inline: true },
+        { name: "Data/Hora", value: formatDateBrazil() }
+      ]));
     }
 
     // Moved
     if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
-      sendEmbedTo(CH_LOGS.MOVEU_CALL, makeLogEmbed("Movido de call", `Usuário: ${user.tag} (${user.id})\nDe: ${oldState.channel?.name}\nPara: ${newState.channel?.name}`));
+      const executor = newState.guild ? await fetchExecutor(newState.guild, AuditLogEvent.MemberMove) : null;
+      sendEmbed(CH.MOVEU_CALL, makeEmbed("Movido de call", [
+        { name: "Usuário", value: `${user.tag} (${user.id})`, inline: true },
+        { name: "De", value: `${oldState.channel?.name || oldState.channelId}`, inline: true },
+        { name: "Para", value: `${newState.channel?.name || newState.channelId}`, inline: true },
+        { name: "Executado por", value: executor ? `${executor.tag} (${executor.id})` : "Usuário/Desconhecido", inline: true },
+        { name: "Data/Hora", value: formatDateBrazil() }
+      ]));
     }
 
-    // Mute/Unmute self
+    // Mute/Unmute
     if (oldState.selfMute !== newState.selfMute) {
-      sendEmbedTo(CH_LOGS.MUTE, makeLogEmbed("Mute/Unmute", `Usuário: ${user.tag} (${user.id})\nNovo estado mute: ${newState.selfMute}`));
+      sendEmbed(CH.MUTOU, makeEmbed("Mute/Unmute", [
+        { name: "Usuário", value: `${user.tag} (${user.id})`, inline: true },
+        { name: "Mute", value: `${newState.selfMute}`, inline: true },
+        { name: "Data/Hora", value: formatDateBrazil() }
+      ]));
     }
 
-    // Deaf/Undeaf
     if (oldState.selfDeaf !== newState.selfDeaf) {
-      sendEmbedTo(CH_LOGS.MUTE, makeLogEmbed("Deaf/Undeaf", `Usuário: ${user.tag} (${user.id})\nNovo estado deaf: ${newState.selfDeaf}`));
+      sendEmbed(CH.MUTOU, makeEmbed("Deaf/Undeaf", [
+        { name: "Usuário", value: `${user.tag} (${user.id})`, inline: true },
+        { name: "Deaf", value: `${newState.selfDeaf}`, inline: true },
+        { name: "Data/Hora", value: formatDateBrazil() }
+      ]));
     }
-  } catch (e) {
-    console.error("voiceStateUpdate error:", e);
+  } catch (err) {
+    console.error("voiceStateUpdate error:", err);
   }
 });
 
-// === ROLE and CHANNEL events (create/edit/delete) ===
-client.on("roleCreate", (role) => {
-  sendEmbedTo(CH_LOGS.CRIAR_CARGO, makeLogEmbed("Cargo criado", `Nome: ${role.name}\nID: ${role.id}`));
-});
-client.on("roleDelete", (role) => {
-  sendEmbedTo(CH_LOGS.DELETOU_CARGO, makeLogEmbed("Cargo deletado", `Nome: ${role.name}\nID: ${role.id}`));
-});
-client.on("roleUpdate", (oldRole, newRole) => {
-  sendEmbedTo(CH_LOGS.EDITAR_CARGO, makeLogEmbed("Cargo editado", `Antes: ${oldRole.name}\nDepois: ${newRole.name}`));
-});
-
-client.on("channelCreate", (ch) => {
-  sendEmbedTo(CH_LOGS.CRIOU_CANAL, makeLogEmbed("Canal criado", `Nome: ${ch.name}\nTipo: ${ch.type}\nID: ${ch.id}`));
-});
-client.on("channelDelete", (ch) => {
-  sendEmbedTo(CH_LOGS.DELETOU_CANAL, makeLogEmbed("Canal deletado", `Nome: ${ch.name}\nID: ${ch.id}`));
-});
-client.on("channelUpdate", (oldC, newC) => {
-  sendEmbedTo(CH_LOGS.MOVEU_CANAL, makeLogEmbed("Canal editado/movido", `Antes: ${oldC.name}\nDepois: ${newC.name}`));
+// ---------- ROLE & CHANNEL ADMIN LOGS (with author via audit) ----------
+client.on("roleCreate", async (role) => {
+  const executor = await fetchExecutor(role.guild, AuditLogEvent.RoleCreate, (e) => e.targetId === role.id);
+  sendEmbed(CH.CRIAR_CARGO, makeEmbed("Cargo criado", [
+    { name: "Cargo", value: `${role.name}` },
+    { name: "ID", value: `${role.id}` },
+    { name: "Criado por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]));
 });
 
-// === BANS / KICKS / MEMBER NICKNAME / AVATAR CHANGES / MEMBER JOIN/LEAVE ===
+client.on("roleDelete", async (role) => {
+  const executor = await fetchExecutor(role.guild, AuditLogEvent.RoleDelete, (e) => e.targetId === role.id);
+  sendEmbed(CH.DELETOU_CARGO, makeEmbed("Cargo deletado", [
+    { name: "Cargo", value: `${role.name}` },
+    { name: "ID", value: `${role.id}` },
+    { name: "Deletado por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]));
+});
+
+client.on("roleUpdate", async (oldRole, newRole) => {
+  const executor = await fetchExecutor(newRole.guild, AuditLogEvent.RoleUpdate, (e) => e.targetId === newRole.id);
+  sendEmbed(CH.DELETOU_CARGO, makeEmbed("Cargo editado", [
+    { name: "Antes", value: `${oldRole.name}` },
+    { name: "Depois", value: `${newRole.name}` },
+    { name: "Editado por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]));
+});
+
+// CHANNELS
+client.on("channelCreate", async (ch) => {
+  const executor = await fetchExecutor(ch.guild, AuditLogEvent.ChannelCreate, (e) => e.targetId === ch.id);
+  sendEmbed(CH.CRIAR_CANAL, makeEmbed("Canal criado", [
+    { name: "Canal", value: `${ch.name}` },
+    { name: "ID", value: `${ch.id}` },
+    { name: "Criado por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]));
+});
+
+client.on("channelDelete", async (ch) => {
+  const executor = await fetchExecutor(ch.guild, AuditLogEvent.ChannelDelete, (e) => e.targetId === ch.id);
+  sendEmbed(CH.DELETOU_CANAL, makeEmbed("Canal deletado", [
+    { name: "Canal", value: `${ch.name}` },
+    { name: "ID", value: `${ch.id}` },
+    { name: "Deletado por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]));
+});
+
+client.on("channelUpdate", async (oldC, newC) => {
+  const executor = await fetchExecutor(newC.guild, AuditLogEvent.ChannelUpdate, (e) => e.targetId === newC.id);
+  sendEmbed(CH.MOVEU_CANAL, makeEmbed("Canal editado", [
+    { name: "Antes", value: `${oldC.name}` },
+    { name: "Depois", value: `${newC.name}` },
+    { name: "Editado por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]));
+});
+
+// ---------- BAN / KICK / OTHER ADMIN ----------
 client.on("guildBanAdd", async (guild, user) => {
-  sendEmbedTo(CH_LOGS.BAN, makeLogEmbed("Usuário banido", `Usuário: ${user.tag} (${user.id})`));
+  const executor = await fetchExecutor(guild, AuditLogEvent.MemberBanAdd, (e) => e.targetId === user.id);
+  sendEmbed(CH.BOT_FALHA, makeEmbed("Usuário banido", [
+    { name: "Usuário", value: `${user.tag} (${user.id})` },
+    { name: "Banido por", value: executor ? `${executor.tag} (${executor.id})` : "Desconhecido" },
+    { name: "Data/Hora", value: formatDateBrazil() }
+  ]));
 });
 
-client.on("guildMemberRemove", async (member) => {
-  // already handled earlier for main -> logs kick; also log leaving
-  sendEmbedTo(CH_LOGS.SAIU_SERVIDOR, makeLogEmbed("Usuário saiu do servidor", `${member.user.tag} (${member.user.id})`));
-});
-
-client.on("guildMemberAdd", (member) => {
-  // small log in addition to sync logic
-  sendEmbedTo(CH_LOGS.ENTROU_SERVIDOR, makeLogEmbed("Usuário entrou no servidor", `${member.user.tag} (${member.user.id})`));
-});
-
-client.on("guildMemberUpdate", (oldMember, newMember) => {
-  // Detect nickname change
-  if (oldMember.nickname !== newMember.nickname) {
-    sendEmbedTo(CH_LOGS.NOME_ATUALIZADO, makeLogEmbed("Nickname alterado", `Antes: ${oldMember.nickname || oldMember.user.username}\nDepois: ${newMember.nickname || newMember.user.username}\nUsuario: ${newMember.user.tag}`));
-  }
-});
-
-// === PROCESS ERROR LOGGING ===
+// ---------- PROCESS ERRORS ----------
 process.on("unhandledRejection", (err) => {
   console.error("UnhandledRejection:", err);
-  sendEmbedTo(CH_LOGS.BOT_FALHA, makeLogEmbed("UnhandledRejection", String(err).slice(0, 2000)));
+  sendEmbed(CH.BOT_FALHA, makeEmbed("UnhandledRejection", [{ name: "Erro", value: String(err).slice(0, 2000) }, { name: "Data/Hora", value: formatDateBrazil() }]));
 });
 process.on("uncaughtException", (err) => {
   console.error("uncaughtException:", err);
-  sendEmbedTo(CH_LOGS.BOT_FALHA, makeLogEmbed("uncaughtException", String(err).slice(0,2000)));
+  sendEmbed(CH.BOT_FALHA, makeEmbed("uncaughtException", [{ name: "Erro", value: String(err).slice(0, 2000) }, { name: "Data/Hora", value: formatDateBrazil() }]));
 });
 
-// === VOICE 24H CONNECT ===
+// ---------- VOICE 24H CONNECT ----------
 async function connectVoice24() {
   try {
-    const channelId = CANAL_VOZ_24H;
-    const guildId = SERVIDOR_PRINCIPAL;
-    if (!channelId || !guildId) return;
-
-    const guild = await client.guilds.fetch(guildId).catch(() => null);
+    if (!VOICE_CHANNEL_24H_ID || !GUILD_MAIN_ID) return;
+    const guild = await client.guilds.fetch(GUILD_MAIN_ID).catch(() => null);
     if (!guild) return;
     await joinVoiceChannel({
-      channelId,
-      guildId,
+      channelId: VOICE_CHANNEL_24H_ID,
+      guildId: GUILD_MAIN_ID,
       adapterCreator: guild.voiceAdapterCreator
     });
-    console.log("Conectado no canal de voz 24h");
+    console.log("Conectado no canal de voz 24h.");
   } catch (e) {
-    console.error("Erro connectVoice24:", e);
+    console.error("connectVoice24 error:", e);
     setTimeout(connectVoice24, 10000);
   }
 }
 
-// === POST BUTTON / EXPRESS KEEPALIVE / READY
+// ---------- EXPRESS KEEPALIVE ----------
 const app = express();
 app.get("/", (req, res) => res.send("OK"));
-app.listen(process.env.PORT || 3000, () => console.log("HTTP server listening"));
+app.listen(PORT, () => console.log(`HTTP server listening on ${PORT}`));
 
+// ---------- READY ----------
 client.once("ready", async () => {
   console.log(`Bot ready: ${client.user.tag}`);
-  await postButtonIfNeeded();
-  connectVoice24();
+  await postButtonIfNeeded().catch(() => {});
+  connectVoice24().catch(() => {});
 });
 
-// === LOGIN ===
-client.login(DISCORD_TOKEN).catch(err => {
-  console.error("Falha no login:", err);
+// helper to post button
+async function postButtonIfNeeded() {
+  try {
+    const ch = getChannel(CHANNEL_BUTTON_ID);
+    if (!ch || !ch.isTextBased?.()) return;
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("vincular_cargos").setLabel("🔗 Vincular cargos").setStyle(ButtonStyle.Primary)
+    );
+    await ch.send({
+      embeds: [ makeEmbed("Vincular cargos", [{ name: "Info", value: "Clique para sincronizar cargos com o servidor principal" }]) ],
+      components: [row]
+    }).catch(() => {});
+  } catch (e) {
+    console.error("postButtonIfNeeded:", e);
+  }
+}
+
+// ---------- LOGIN ----------
+client.login(TOKEN).catch(err => {
+  console.error("Login failed:", err);
   process.exit(1);
 });
