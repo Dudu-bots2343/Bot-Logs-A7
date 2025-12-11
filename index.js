@@ -10,12 +10,6 @@ const {
   Events
 } = require("discord.js");
 
-const {
-  joinVoiceChannel,
-  entersState,
-  VoiceConnectionStatus
-} = require("@discordjs/voice");
-
 const express = require("express");
 
 /* =======================================================
@@ -35,22 +29,17 @@ const LOG_MENSAGEM_EDITADA = process.env.LOG_MENSAGEM_EDITADA;
 
 const LOG_ENTROU_CALL = process.env.LOG_ENTROU_CALL;
 const LOG_SAIU_CALL = process.env.LOG_SAIU_CALL;
-const LOG_MUTOU_DESMUTOU = process.env.LOG_MUTOU_DESMUTOU;
 const LOG_MOVEU_USUARIO_CALL = process.env.LOG_MOVEU_USUARIO_CALL;
 
 const LOG_CRIAR_CARGO = process.env.LOG_CRIAR_CARGO;
-const LOG_ADICIONOU_CARGO = process.env.LOG_ADICIONOU_CARGO;
-const LOG_REMOVEU_CARGO = process.env.LOG_REMOVEU_CARGO;
 const LOG_DELETOU_CARGO = process.env.LOG_DELETOU_CARGO;
 
 const LOG_CRIAR_CANAL = process.env.LOG_CRIAR_CANAL;
 const LOG_DELETOU_CANAL = process.env.LOG_DELETOU_CANAL;
-const LOG_MOVEU_CANAL = process.env.LOG_MOVEU_CANAL;
 
 /* =======================================================
-   CARGOS DO SERVIDOR PRINCIPAL → SERVIDOR DE LOGS
+   ROLE MAP
 ======================================================= */
-
 const ROLE_MAP = {
   [process.env.ROLE_FOUNDER]: process.env.ROLE_FOUNDER,
   [process.env.ROLE_DIRETOR_GERAL]: process.env.ROLE_DIRETOR_GERAL,
@@ -95,7 +84,7 @@ function embed(title, desc, color = 0x2b2d31) {
 }
 
 /* =======================================================
-   SINCRONIZAÇÃO AUTOMÁTICA DE CARGOS AO ENTRAR NO LOGS
+   SYNC DE CARGOS
 ======================================================= */
 
 async function syncRoles(member) {
@@ -103,49 +92,38 @@ async function syncRoles(member) {
     const guildMain = await client.guilds.fetch(SERVIDOR_PRINCIPAL);
     const mainMember = await guildMain.members.fetch(member.id).catch(() => null);
 
-    if (!mainMember) {
-      await member.kick("Não está no servidor principal.");
-      return;
-    }
+    if (!mainMember) return member.kick("Não está no servidor principal.");
 
-    // pega apenas os cargos que estão no MAP
     const rolesToGive = mainMember.roles.cache
       .filter(r => ROLE_MAP[r.id])
       .map(r => ROLE_MAP[r.id]);
 
     if (rolesToGive.length === 0) {
-      await member.kick("Sem cargos válidos no servidor principal.");
-      return;
+      return member.kick("Sem cargos válidos.");
     }
 
     await member.roles.add(rolesToGive);
-
     return true;
+
   } catch (e) {
-    console.log("Erro ao sincronizar cargos:", e);
+    console.log("Erro sync:", e);
   }
 }
 
 /* =======================================================
-   EVENTO: Entrou no servidor de LOGS
+   EVENTOS DE ENTRADA/SAÍDA NO SERVIDOR
 ======================================================= */
 
-client.on("guildMemberAdd", async (member) => {
+client.on("guildMemberAdd", async member => {
   if (member.guild.id !== SERVIDOR_LOGS) return;
 
   const ok = await syncRoles(member);
-  if (!ok) return;
-
-  log(
-    LOG_MENSAGEM_ENVIADA,
-    embed("Cargos sincronizados", `O usuário <@${member.id}> recebeu seus cargos automaticamente.`)
-  );
+  if (ok) {
+    log(LOG_MENSAGEM_ENVIADA, embed("Cargos sincronizados", `Usuário <@${member.id}> sincronizado.`));
+  }
 });
 
-/* =======================================================
-   EVENTO: Usuário saiu do servidor principal → expulsar do LOGS
-======================================================= */
-client.on("guildMemberRemove", async (member) => {
+client.on("guildMemberRemove", async member => {
   if (member.guild.id !== SERVIDOR_PRINCIPAL) return;
 
   const logsGuild = await client.guilds.fetch(SERVIDOR_LOGS);
@@ -155,10 +133,10 @@ client.on("guildMemberRemove", async (member) => {
 });
 
 /* =======================================================
-   BOTÃO PARA VINCULAR CARGOS MANUALMENTE
+   BOTÃO
 ======================================================= */
 
-client.on(Events.InteractionCreate, async (interaction) => {
+client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "vincular_cargos") return;
 
@@ -168,21 +146,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const logsMember = logsGuild.members.cache.get(interaction.user.id);
 
   const ok = await syncRoles(logsMember);
-
-  if (!ok) {
-    await interaction.editReply("❌ Não foi possível vincular cargos.");
-    return;
-  }
-
-  await interaction.editReply("✅ Cargos sincronizados com sucesso!");
+  interaction.editReply(ok ? "✅ Sincronizado!" : "❌ Falha ao sincronizar.");
 });
 
 /* =======================================================
-   POSTA O BOTÃO NO CANAL DEFINIDO
+   POSTAR BOTÃO
 ======================================================= */
 
 async function postButton() {
   const channel = await client.channels.fetch(CANAL_BOTAO);
+
   const button = new ButtonBuilder()
     .setCustomId("vincular_cargos")
     .setLabel("🔗 Vincular cargos")
@@ -190,8 +163,8 @@ async function postButton() {
 
   const row = new ActionRowBuilder().addComponents(button);
 
-  await channel.send({
-    embeds: [embed("Vincular Cargos", "Clique no botão para sincronizar seus cargos manualmente.")],
+  channel.send({
+    embeds: [embed("Vincular Cargos", "Clique para sincronizar seus cargos.")],
     components: [row]
   });
 }
@@ -200,124 +173,64 @@ async function postButton() {
    LOGS DE MENSAGENS
 ======================================================= */
 
-client.on("messageCreate", (msg) => {
+client.on("messageCreate", msg => {
   if (msg.author.bot) return;
-  log(
-    LOG_MENSAGEM_ENVIADA,
-    embed("Mensagem enviada", `👤 **${msg.author.tag}**\n📌 ${msg.channel}\n\n💬 ${msg.content}`)
+  log(LOG_MENSAGEM_ENVIADA,
+    embed("Mensagem enviada", `👤 ${msg.author.tag}\n📌 ${msg.channel}\n\n${msg.content}`)
   );
 });
 
-client.on("messageDelete", (msg) => {
-  log(
-    LOG_MENSAGEM_APAGADA,
-    embed("Mensagem apagada", `👤 ${msg.author?.tag}\n📌 ${msg.channel}\n\n💬 ${msg.content}`)
+client.on("messageDelete", msg => {
+  log(LOG_MENSAGEM_APAGADA,
+    embed("Mensagem apagada", `👤 ${msg.author?.tag}\n📌 ${msg.channel}\n\n${msg.content}`)
   );
 });
 
 client.on("messageUpdate", (oldMsg, newMsg) => {
-  log(
-    LOG_MENSAGEM_EDITADA,
-    embed(
-      "Mensagem editada",
+  log(LOG_MENSAGEM_EDITADA,
+    embed("Mensagem editada",
       `👤 ${newMsg.author.tag}\n📌 ${newMsg.channel}\n\n**Antes:** ${oldMsg.content}\n**Depois:** ${newMsg.content}`
     )
   );
 });
 
 /* =======================================================
-   LOGS DE VOZ
+   LOGS DE CANAIS / CARGOS
 ======================================================= */
 
-client.on("voiceStateUpdate", (oldState, newState) => {
-  const user = newState.member?.user || oldState.member?.user;
-  if (!user) return;
+client.on("roleCreate", r => {
+  log(LOG_CRIAR_CARGO, embed("Cargo criado", r.name));
+});
 
-  if (!oldState.channel && newState.channel) {
-    return log(LOG_ENTROU_CALL, embed("Entrou na call", `👤 ${user.tag}\n📌 ${newState.channel.name}`));
-  }
+client.on("roleDelete", r => {
+  log(LOG_DELETOU_CARGO, embed("Cargo deletado", r.name));
+});
 
-  if (oldState.channel && !newState.channel) {
-    return log(LOG_SAIU_CALL, embed("Saiu da call", `👤 ${user.tag}\n📌 ${oldState.channel.name}`));
-  }
+client.on("channelCreate", c => {
+  log(LOG_CRIAR_CANAL, embed("Canal criado", c.name));
+});
 
-  if (oldState.channelId !== newState.channelId) {
-    return log(
-      LOG_MOVEU_USUARIO_CALL,
-      embed("Moveu de canal", `👤 ${user.tag}\n➡️ ${oldState.channel?.name} → ${newState.channel?.name}`)
-    );
-  }
+client.on("channelDelete", c => {
+  log(LOG_DELETOU_CANAL, embed("Canal deletado", c.name));
 });
 
 /* =======================================================
-   LOGS DE CARGOS
+   FICAR 24H NA CALL (SEM @discordjs/voice)
 ======================================================= */
 
-client.on("roleCreate", (r) => {
-  log(LOG_CRIAR_CARGO, embed("Cargo criado", `📌 **${r.name}**`));
-});
-
-client.on("roleDelete", (r) => {
-  log(LOG_DELETOU_CARGO, embed("Cargo deletado", `📌 **${r.name}**`));
-});
+async function connectVoice() {
+  try {
+    const channel = await client.channels.fetch(CANAL_VOZ);
+    await channel.guild.members.me.voice.setChannel(channel);
+    console.log("🔥 Conectado ao canal de voz!");
+  } catch (e) {
+    console.log("Erro ao conectar, tentando novamente...");
+    setTimeout(connectVoice, 5000);
+  }
+}
 
 /* =======================================================
-   LOGS DE CANAIS
-======================================================= */
-
-client.on("channelCreate", (c) => {
-  log(LOG_CRIAR_CANAL, embed("Canal criado", `📌 ${c.name}`));
-});
-
-client.on("channelDelete", (c) => {
-  log(LOG_DELETOU_CANAL, embed("Canal deletado", `📌 ${c.name}`));
-});
-
-/* =======================================================
-   FICAR 24H NA CALL
-======================================================= */
-
-const { Client, GatewayIntentBits, Partials } = require("discord.js");
-require("dotenv").config();
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildVoiceStates,
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.User],
-});
-
-client.once("ready", () => {
-  console.log(`Bot logado como ${client.user.tag}`);
-  
-  // Conectar ao canal de voz sem usar @discordjs/voice
-  const guild = client.guilds.cache.get(process.env.GUILD_ID);
-  if (!guild) return console.log("Guild não encontrada.");
-
-  const channel = guild.channels.cache.get(process.env.VOICE_CHANNEL_ID);
-  if (!channel) return console.log("Canal de voz não encontrado.");
-
-  // Conexão DUMMY (não usa WebRTC)
-  channel.join
-    ? channel.join() // fallback para versões antigas
-    : guild.members.me.voice.setChannel(channel)
-        .then(() => console.log("Conectado no canal de voz sem erro."))
-        .catch(console.error);
-});
-
-// === Seus logs aqui ===
-// Exemplo:
-client.on("messageCreate", (message) => {
-  console.log(`[LOG] ${message.author.tag}: ${message.content}`);
-});
-
-
-/* ======================================================
-   EXPRESS PARA RENDER / UPTIME ROBOT
+   EXPRESS / KEEP ALIVE
 ======================================================= */
 
 const app = express();
@@ -338,4 +251,4 @@ client.on("ready", () => {
    LOGIN
 ======================================================= */
 
-client.login(process.env.TOKEN);
+client.login(TOKEN);
