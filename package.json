@@ -1,19 +1,17 @@
 {
   "name": "discord-logs-bot",
   "version": "1.0.0",
-  "description": "Bot de logs com sincronização automática de cargos entre dois servidores.",
   "main": "index.js",
+  "license": "MIT",
   "scripts": {
     "start": "node index.js"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "dotenv": "^16.3.1",
-    "node-cron": "^3.0.3",
-    "@discordjs/voice": "^0.16.0",
+    "@discordjs/voice": "^0.16.1",
     "express": "^4.18.2"
-  },
-  "engines": {
-    "node": ">=18.0.0"
   }
 }
