@@ -38,7 +38,7 @@ const LOG_CRIAR_CANAL = process.env.LOG_CRIAR_CANAL;
 const LOG_DELETOU_CANAL = process.env.LOG_DELETOU_CANAL;
 
 /* =======================================================
-   ROLE MAP
+   ROLES ID MAP (por ID, como você escolheu)
 ======================================================= */
 const ROLE_MAP = {
   [process.env.ROLE_FOUNDER]: process.env.ROLE_FOUNDER,
@@ -57,10 +57,9 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildPresences,
-    GatewayIntentBits.GuildBans
+    GatewayIntentBits.GuildMessageReactions
   ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
@@ -68,7 +67,6 @@ const client = new Client({
 /* =======================================================
    FUNÇÕES AUXILIARES
 ======================================================= */
-
 function log(channelId, embed) {
   if (!channelId) return;
   const channel = client.channels.cache.get(channelId);
@@ -84,7 +82,7 @@ function embed(title, desc, color = 0x2b2d31) {
 }
 
 /* =======================================================
-   SYNC DE CARGOS
+   SYNC DE CARGOS (POR ID)
 ======================================================= */
 
 async function syncRoles(member) {
@@ -94,6 +92,7 @@ async function syncRoles(member) {
 
     if (!mainMember) return member.kick("Não está no servidor principal.");
 
+    // filtra apenas cargos que existem no ROLE_MAP
     const rolesToGive = mainMember.roles.cache
       .filter(r => ROLE_MAP[r.id])
       .map(r => ROLE_MAP[r.id]);
@@ -105,22 +104,23 @@ async function syncRoles(member) {
     await member.roles.add(rolesToGive);
     return true;
 
-  } catch (e) {
-    console.log("Erro sync:", e);
+  } catch (error) {
+    console.log("Erro sync:", error);
   }
 }
 
 /* =======================================================
-   EVENTOS DE ENTRADA/SAÍDA NO SERVIDOR
+   EVENTOS DE JOIN / LEAVE
 ======================================================= */
-
 client.on("guildMemberAdd", async member => {
   if (member.guild.id !== SERVIDOR_LOGS) return;
 
   const ok = await syncRoles(member);
-  if (ok) {
-    log(LOG_MENSAGEM_ENVIADA, embed("Cargos sincronizados", `Usuário <@${member.id}> sincronizado.`));
-  }
+  if (ok)
+    log(
+      LOG_MENSAGEM_ENVIADA,
+      embed("Cargos sincronizados", `Usuário <@${member.id}> sincronizado.`)
+    );
 });
 
 client.on("guildMemberRemove", async member => {
@@ -135,7 +135,6 @@ client.on("guildMemberRemove", async member => {
 /* =======================================================
    BOTÃO
 ======================================================= */
-
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "vincular_cargos") return;
@@ -152,7 +151,6 @@ client.on(Events.InteractionCreate, async interaction => {
 /* =======================================================
    POSTAR BOTÃO
 ======================================================= */
-
 async function postButton() {
   const channel = await client.channels.fetch(CANAL_BOTAO);
 
@@ -175,20 +173,24 @@ async function postButton() {
 
 client.on("messageCreate", msg => {
   if (msg.author.bot) return;
-  log(LOG_MENSAGEM_ENVIADA,
+  log(
+    LOG_MENSAGEM_ENVIADA,
     embed("Mensagem enviada", `👤 ${msg.author.tag}\n📌 ${msg.channel}\n\n${msg.content}`)
   );
 });
 
 client.on("messageDelete", msg => {
-  log(LOG_MENSAGEM_APAGADA,
+  log(
+    LOG_MENSAGEM_APAGADA,
     embed("Mensagem apagada", `👤 ${msg.author?.tag}\n📌 ${msg.channel}\n\n${msg.content}`)
   );
 });
 
 client.on("messageUpdate", (oldMsg, newMsg) => {
-  log(LOG_MENSAGEM_EDITADA,
-    embed("Mensagem editada",
+  log(
+    LOG_MENSAGEM_EDITADA,
+    embed(
+      "Mensagem editada",
       `👤 ${newMsg.author.tag}\n📌 ${newMsg.channel}\n\n**Antes:** ${oldMsg.content}\n**Depois:** ${newMsg.content}`
     )
   );
@@ -215,7 +217,7 @@ client.on("channelDelete", c => {
 });
 
 /* =======================================================
-   FICAR 24H NA CALL (SEM @discordjs/voice)
+   FICAR 24H NA CALL
 ======================================================= */
 
 async function connectVoice() {
@@ -223,7 +225,7 @@ async function connectVoice() {
     const channel = await client.channels.fetch(CANAL_VOZ);
     await channel.guild.members.me.voice.setChannel(channel);
     console.log("🔥 Conectado ao canal de voz!");
-  } catch (e) {
+  } catch (err) {
     console.log("Erro ao conectar, tentando novamente...");
     setTimeout(connectVoice, 5000);
   }
