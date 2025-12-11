@@ -1,18 +1,27 @@
 {
-  "name": "bot-logs-a7",
+  "name": "discord-logs-bot",
   "version": "1.0.0",
-  "description": "Bot de logs + sincronização de cargos + call 24h",
+  "description": "Bot de logs com sincronização automática de cargos entre dois servidores.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3",
+    "@discordjs/voice": "^0.16.0"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
-    "@discordjs/rest": "^2.2.0",
-    "discord-api-types": "^0.37.61"
-  }
+  "keywords": [
+    "discord",
+    "bot",
+    "logs",
+    "auto-roles",
+    "discord-logs"
+  ],
+  "author": "Você",
+  "license": "MIT"
 }
