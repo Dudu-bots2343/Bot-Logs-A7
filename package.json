@@ -1,28 +1,23 @@
 {
-  "name": "bot-logs-a7",
+  "name": "a7-logs",
   "version": "1.0.0",
-  "description": "Bot de logs + vinculação entre dois servidores (principal e logs)",
+  "description": "Sistema A7 Logs - render + github + uptime",
   "main": "index.js",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "keywords": [
-    "discord",
-    "discord-bot",
-    "logs",
-    "a7",
-    "monitoramento"
-  ],
-  "author": "SeuNome",
-  "license": "MIT",
   "dependencies": {
-    "discord.js": "^14.15.1",
+    "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.21.2",
+    "@discordjs/voice": "^0.17.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.x"
   }
 }
