@@ -1,6 +1,5 @@
 // ========================================================
-//  BOT DE LOGS — SISTEMA COMPLETO
-//  Render + GitHub + UptimeRobot + Call 24h
+// SISTEMA COMPLETO A7 LOGS — COMPATÍVEL COM RENDER + GITHUB
 // ========================================================
 
 require("dotenv").config();
@@ -47,7 +46,7 @@ const LOG_DELETOU_CANAL = process.env.LOG_DELETOU_CANAL;
 const LOG_MOVEU_CANAL = process.env.LOG_MOVEU_CANAL;
 
 // ========================================================
-// MAPEAMENTO DE CARGOS (SERVIDOR PRINCIPAL → SERVIDOR DE LOGS)
+// MAPEAMENTO DE CARGOS (espelho de cargos)
 // ========================================================
 const ROLE_MAP = {
   [process.env.FOUNDER]: process.env.FOUNDER,
@@ -66,9 +65,7 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildPresences
+    GatewayIntentBits.MessageContent
   ],
   partials: [
     Partials.Message,
@@ -99,7 +96,7 @@ function makeEmbed(title, desc) {
 }
 
 // ========================================================
-// SINCRONIZAÇÃO DE CARGOS AO ENTRAR NO SERVIDOR DE LOGS
+// SINCRONIZAÇÃO DE CARGOS ENTRE SERVIDORES
 // ========================================================
 async function syncRoles(memberLogs) {
   try {
@@ -120,19 +117,18 @@ async function syncRoles(memberLogs) {
       return false;
     }
 
-    await memberLogs.roles.add(rolesToGive);
+    await memberLogs.roles.add(rolesToGive).catch(() => {});
     return true;
 
   } catch (err) {
-    console.error("Erro sync →", err);
+    console.error("Erro na sincronização:", err);
+    return false;
   }
 }
 
 // ========================================================
-// EVENTOS DE ENTRADA / SAÍDA DOS SERVIDORES
+// EVENTOS — ENTRADA E SAÍDA
 // ========================================================
-
-// Usuário entrou no servidor de logs
 client.on("guildMemberAdd", async (member) => {
   if (member.guild.id !== SERVIDOR_LOGS) return;
 
@@ -141,12 +137,11 @@ client.on("guildMemberAdd", async (member) => {
   if (ok) {
     sendEmbed(
       LOG_MENSAGEM_ENVIADA,
-      makeEmbed("Cargos sincronizados", `Usuário <@${member.id}> recebeu automaticamente os cargos do servidor principal.`)
+      makeEmbed("Cargos sincronizados", `Usuário <@${member.id}> recebeu os cargos automaticamente.`)
     );
   }
 });
 
-// Usuário saiu do servidor principal → remover do servidor de logs
 client.on("guildMemberRemove", async (member) => {
   if (member.guild.id !== SERVIDOR_PRINCIPAL) return;
 
@@ -175,7 +170,7 @@ client.on("messageCreate", async (msg) => {
   );
 });
 
-client.on("messageDelete", async (msg) => {
+client.on("messageDelete", (msg) => {
   sendEmbed(LOG_MENSAGEM_APAGADA,
     makeEmbed("Mensagem apagada",
       `👤 Autor: **${msg.author?.tag || "Desconhecido"}**\n📌 Canal: ${msg.channel}\n\n💀 Conteúdo:\n${msg.content || "[indisponível]"}`
@@ -192,22 +187,11 @@ client.on("messageUpdate", (oldMsg, newMsg) => {
 });
 
 // ========================================================
-// LOGS DE CARGOS
-// ========================================================
-client.on("roleCreate", (role) => {
-  sendEmbed(LOG_CRIAR_CARGO, makeEmbed("Cargo criado", `📌 Nome: **${role.name}**\n🆔 ID: ${role.id}`));
-});
-
-client.on("roleDelete", (role) => {
-  sendEmbed(LOG_DELETOU_CARGO, makeEmbed("Cargo deletado", `📌 Nome: **${role.name}**\n🆔 ID: ${role.id}`));
-});
-
-// ========================================================
 // LOGS DE CANAIS
 // ========================================================
 client.on("channelCreate", (c) => {
   sendEmbed(LOG_CRIAR_CANAL,
-    makeEmbed("Canal criado", `📌 Nome: **${c.name}**\n🔧 Tipo: ${c.type}\n🆔 ID: ${c.id}`)
+    makeEmbed("Canal criado", `📌 Nome: **${c.name}**\n🆔 ID: ${c.id}`)
   );
 });
 
@@ -218,24 +202,38 @@ client.on("channelDelete", (c) => {
 });
 
 // ========================================================
+// LOGS DE CARGOS
+// ========================================================
+client.on("roleCreate", (role) => {
+  sendEmbed(LOG_CRIAR_CARGO,
+    makeEmbed("Cargo criado", `📌 Nome: **${role.name}**\n🆔 ID: ${role.id}`)
+  );
+});
+
+client.on("roleDelete", (role) => {
+  sendEmbed(LOG_DELETOU_CARGO,
+    makeEmbed("Cargo deletado", `📌 Nome: **${role.name}**\n🆔 ID: ${role.id}`)
+  );
+});
+
+// ========================================================
 // LOGS DE VOZ
 // ========================================================
 client.on("voiceStateUpdate", (oldState, newState) => {
   const user = newState.member?.user || oldState.member?.user;
-  if (!user) return;
 
   if (!oldState.channel && newState.channel) {
     sendEmbed(LOG_ENTROU_CALL,
-      makeEmbed("Entrou na call", `👤 **${user.tag}**\n📌 Canal: ${newState.channel.name}`)
+      makeEmbed("Entrou na call", `👤 ${user.tag}\n📌 Canal: ${newState.channel.name}`)
     );
   } else if (oldState.channel && !newState.channel) {
     sendEmbed(LOG_SAIU_CALL,
-      makeEmbed("Saiu da call", `👤 **${user.tag}**\n📌 Canal: ${oldState.channel.name}`)
+      makeEmbed("Saiu da call", `👤 ${user.tag}\n📌 Canal: ${oldState.channel.name}`)
     );
   } else if (oldState.channelId !== newState.channelId) {
     sendEmbed(LOG_MOVEU_USUARIO_CALL,
       makeEmbed("Movido de call",
-        `👤 **${user.tag}**\n➡️ De: **${oldState.channel?.name || "N/A"}**\n➡️ Para: **${newState.channel?.name || "N/A"}**`
+        `👤 ${user.tag}\n➡️ De: **${oldState.channel?.name}**\n➡️ Para: **${newState.channel?.name}**`
       )
     );
   }
@@ -243,79 +241,73 @@ client.on("voiceStateUpdate", (oldState, newState) => {
   if (oldState.selfMute !== newState.selfMute) {
     sendEmbed(LOG_MUTOU_DESMUTOU,
       makeEmbed("Mute/Unmute",
-        `👤 **${user.tag}**\n🎙️ Estado: **${newState.selfMute ? "Mutou" : "Desmutou"}**`
+        `👤 ${user.tag}\n🎙️ Estado: **${newState.selfMute ? "Mutou" : "Desmutou"}**`
       )
     );
   }
 });
 
 // ========================================================
-// BOTÃO PARA VINCULAR CARGOS MANUALMENTE
+// BOTÃO DE VÍNCULO
 // ========================================================
 client.on(Events.InteractionCreate, async (interaction) => {
-  try {
-    if (!interaction.isButton()) return;
-    if (interaction.customId !== "vincular_cargos") return;
+  if (!interaction.isButton()) return;
+  if (interaction.customId !== "vincular_cargos") return;
 
-    await interaction.deferReply({ flags: 64 }).catch(() => {});
+  await interaction.deferReply({ flags: 64 });
 
-    const logsGuild = await client.guilds.fetch(SERVIDOR_LOGS);
-    const logsMember = await logsGuild.members.fetch(interaction.user.id).catch(() => null);
+  const logsGuild = await client.guilds.fetch(SERVIDOR_LOGS);
+  const logsMember = await logsGuild.members.fetch(interaction.user.id).catch(() => null);
 
-    const ok = await syncRoles(logsMember);
+  const ok = await syncRoles(logsMember);
 
-    await interaction.editReply(ok ? "✅ Cargos sincronizados!" : "❌ Não foi possível sincronizar.");
-
-  } catch (err) {
-    console.warn("Erro no botão →", err);
-  }
+  await interaction.editReply(ok ? "✅ Cargos sincronizados!" : "❌ Não foi possível sincronizar.");
 });
 
-// postar o botão
 async function postButtonIfNeeded() {
   const ch = getChannel(CANAL_BOTAO);
-  if (!ch || !ch.isTextBased()) return;
+  if (!ch) return;
 
-  const button = new ButtonBuilder()
-    .setCustomId("vincular_cargos")
-    .setLabel("🔗 Vincular cargos")
-    .setStyle(ButtonStyle.Primary);
-
-  const row = new ActionRowBuilder().addComponents(button);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("vincular_cargos")
+      .setLabel("🔗 Vincular cargos")
+      .setStyle(ButtonStyle.Primary)
+  );
 
   ch.send({
-    embeds: [makeEmbed("Vincular cargos", "Clique no botão abaixo para sincronizar seus cargos com o servidor principal.")],
+    embeds: [makeEmbed("Vincular cargos", "Clique no botão abaixo para sincronizar seus cargos.")],
     components: [row]
   }).catch(() => {});
 }
 
 // ========================================================
-// SISTEMA 24H NA CALL (SEM @discordjs/voice)
+// SISTEMA 24H NA CALL (ANTI-DROP)
 // ========================================================
 async function connectVoice() {
   try {
     const ch = await client.channels.fetch(CANAL_VOZ);
     await ch.guild.members.me.voice.setChannel(ch);
-    console.log("🔥 Conectado ao canal de voz (modo dummy)");
-  } catch (err) {
-    console.log("Erro ao conectar. Tentando novamente...");
+    console.log("🔥 Conectado na call 24H (dummy mode)");
+  } catch (e) {
+    console.log("Erro ao conectar na call — tentando novamente...");
     setTimeout(connectVoice, 5000);
   }
 }
 
 // ========================================================
-// EXPRESS (KEEP ALIVE)
+// EXPRESS (KEEP ALIVE RENDER)
 // ========================================================
 const app = express();
 app.get("/", (req, res) => res.send("OK"));
 app.listen(process.env.PORT || 3000, () =>
-  console.log("HTTP server running")
+  console.log("HTTP server online")
 );
 
 // ========================================================
-// READY (EVENTO CORRETO v14.15+)
+// READY — EVENTO CORRETO
 // ========================================================
-client.once("clientReady", async () => {
+client.once("ready", async () => {
   console.log(`Bot logado como ${client.user.tag}`);
   await postButtonIfNeeded();
   connectVoice();
