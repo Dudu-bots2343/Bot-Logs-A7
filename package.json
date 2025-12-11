@@ -1,31 +1,18 @@
 {
-  "name": "bot-logs",
+  "name": "bot-logs-a7",
   "version": "1.0.0",
-  "description": "Bot avançado para logs completos, vinculação de cargos e presença 24h.",
+  "description": "Bot de logs + sincronização de cargos + call 24h",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index.js"
   },
-  "keywords": [
-    "discord",
-    "bot",
-    "logs",
-    "discordjs",
-    "uptime",
-    "render"
-  ],
-  "author": "SeuNome",
-  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
-    "fs": "^0.0.1-security",
-    "path": "^0.12.7",
-    "axios": "^1.6.7",
-    "quick.db": "^9.0.6"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
+    "@discordjs/rest": "^2.2.0",
+    "discord-api-types": "^0.37.61"
   }
 }
